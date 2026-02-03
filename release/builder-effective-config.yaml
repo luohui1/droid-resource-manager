@@ -1,0 +1,18 @@
+directories:
+  output: release
+  buildResources: build
+appId: com.droid.resource-manager
+productName: Droid Resource Manager
+files:
+  - filter:
+      - dist/**/*
+      - dist-electron/**/*
+win:
+  target:
+    - portable
+  icon: public/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+electronVersion: 40.1.0
