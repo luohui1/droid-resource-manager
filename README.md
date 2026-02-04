@@ -1,16 +1,20 @@
 # Droid Resource Manager
 
-桌面端资源管理工具，用于管理 **Droids / Skills / MCP** 以及项目工作流执行，基于 Electron + React + Vite 构建。
+[中文](#中文说明) | [English](#english-guide)
+
+桌面端资源管理工具，用于管理 **Droids / Skills / MCP / Prompts / Rules** 等资源，基于 Electron + React + Vite 构建。
 
 ## 中文说明
 
 ### 功能概览
-- **Droids 管理**：全局/项目级 Droid 列表、详情、复制与运行。
-- **Skills 管理**：全局/项目级 Skills 列表、详情查看，AI 解读改为手动触发。
-- **MCP 管理**：统一查看与管理 MCP 服务与工具。
-- **任务调度**：任务创建、执行、日志与状态追踪。
-- **缓存优化**：Droids/Skills 加载结果持久化缓存，支持手动刷新。
-- **手动初始化**：首页提供“初始化资源”按钮，按需扫描资源。
+- **首页概览**：资源数量统计与“初始化资源”手动扫描。
+- **Droids 管理**：全局/项目级 Droid 列表、详情查看、创建/复制、拖拽移动、工具与配置更新。
+- **Skills 管理**：全局/项目级 Skills 列表、详情查看、创建/编辑/删除，AI 解读手动触发。
+- **MCP 管理**：MCP 服务与工具列表查看。
+- **Prompts 管理**：查看与管理 Prompt 资源。
+- **Rules 管理**：查看与管理 Rule 资源。
+- **资源市场**：资源市场入口与浏览。
+- **设置**：导入/导出配置与基础设置。
 
 ### 环境要求
 - Node.js 18+（推荐 20）
@@ -43,12 +47,14 @@ git lfs pull
 ## English Guide
 
 ### Overview
-- **Droids Manager**: global/project droids list, detail, copy, and run.
-- **Skills Manager**: global/project skills list, detail viewer; AI summary is manual only.
-- **MCP Manager**: manage MCP servers and tools in one place.
-- **Task Scheduler**: create tasks, monitor status, and view logs.
-- **Caching**: persisted cache for droids/skills with manual refresh.
-- **Manual Init**: Home page provides “Init Resources” to scan on demand.
+- **Home**: resource counters and manual “Init Resources” scan.
+- **Droids Manager**: global/project droids list, details, create/copy, drag-move, tools/config updates.
+- **Skills Manager**: global/project skills list, details, create/edit/delete; AI summary is manual only.
+- **MCP Manager**: list MCP servers and tools.
+- **Prompts Manager**: manage prompt resources.
+- **Rules Manager**: manage rule resources.
+- **Marketplace**: browse resource marketplace.
+- **Settings**: import/export settings and basic configuration.
 
 ### Requirements
 - Node.js 18+ (20 recommended)
