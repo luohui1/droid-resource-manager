@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 改进版本/
+docs/
 
 # Editor directories and files
 .vscode/*
