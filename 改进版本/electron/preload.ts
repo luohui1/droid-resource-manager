@@ -7,7 +7,9 @@ const api = {
     add: (project: unknown) => ipcRenderer.invoke('projects:add', project),
     update: (id: string, updates: unknown) => ipcRenderer.invoke('projects:update', id, updates),
     delete: (id: string) => ipcRenderer.invoke('projects:delete', id),
-    selectFolder: () => ipcRenderer.invoke('projects:select-folder')
+    selectFolder: () => ipcRenderer.invoke('projects:select-folder'),
+    tree: (projectPath: string) => ipcRenderer.invoke('projects:tree', projectPath),
+    readFile: (projectPath: string, relativePath: string) => ipcRenderer.invoke('projects:read-file', projectPath, relativePath)
   },
 
   // 任务管理
@@ -53,7 +55,8 @@ const api = {
 
   // 系统
   system: {
-    getUserDataPath: () => ipcRenderer.invoke('system:get-user-data-path')
+    getUserDataPath: () => ipcRenderer.invoke('system:get-user-data-path'),
+    getFactorySettings: () => ipcRenderer.invoke('system:get-factory-settings')
   },
 
   // 事件监听

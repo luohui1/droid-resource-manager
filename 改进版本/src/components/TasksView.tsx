@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useStore } from '../store'
 import { Plus, Play, Square, RotateCcw, Clock, CheckCircle2, XCircle, Loader2, X, Zap } from 'lucide-react'
 import type { Task, AutoLevel } from '../types'
 
 export function TasksView() {
-  const { tasks, projects, droids, setTasks } = useStore()
+  const { tasks, projects, setTasks } = useStore()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [filter, setFilter] = useState<'all' | 'pending' | 'running' | 'completed' | 'failed'>('all')
@@ -97,7 +97,7 @@ export function TasksView() {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <CreateTaskModal projects={projects} droids={droids} onClose={() => setShowCreateModal(false)} onCreate={handleCreate} />
+        <CreateTaskModal projects={projects} onClose={() => setShowCreateModal(false)} onCreate={handleCreate} />
       )}
     </div>
   )
@@ -202,13 +202,23 @@ function TaskDetailPanel({ task, onClose }: { task: Task; onClose: () => void })
   )
 }
 
-function CreateTaskModal({ projects, droids, onClose, onCreate }: { projects: import('../types').Project[]; droids: import('../types').DroidState[]; onClose: () => void; onCreate: (data: { name: string; prompt: string; projectId: string; droidId: string; autoLevel: AutoLevel; priority: number }) => void }) {
+function CreateTaskModal({ projects, onClose, onCreate }: { projects: import('../types').Project[]; onClose: () => void; onCreate: (data: { name: string; prompt: string; projectId: string; droidId: string; autoLevel: AutoLevel; priority: number }) => void }) {
   const [name, setName] = useState('')
   const [prompt, setPrompt] = useState('')
-  const [projectId, setProjectId] = useState(projects[0]?.id || '')
-  const [droidId, setDroidId] = useState(droids[0]?.id || '')
+  const [projectId, setProjectId] = useState('')
+  const [droidId, setDroidId] = useState('')
   const [autoLevel, setAutoLevel] = useState<AutoLevel>('medium')
   const [priority, setPriority] = useState(5)
+  const [projectDroids, setProjectDroids] = useState<import('../types').Droid[]>([])
+
+  const loadDroids = useCallback(async (pid: string) => {
+    const project = projects.find(p => p.id === pid)
+    if (!project) return
+    const droids = await window.api.droids.projectList(project.id, project.path)
+    setProjectDroids(droids)
+    setDroidId(droids[0]?.id || '')
+  }, [projects])
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -234,14 +244,30 @@ function CreateTaskModal({ projects, droids, onClose, onCreate }: { projects: im
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
             <div>
               <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>项目</label>
-              <select className="input" value={projectId} onChange={e => setProjectId(e.target.value)} required>
+              <select
+                className="input"
+                value={projectId}
+                onChange={e => {
+                  const nextProjectId = e.target.value
+                  setProjectId(nextProjectId)
+                  if (nextProjectId) {
+                    loadDroids(nextProjectId)
+                  } else {
+                    setProjectDroids([])
+                    setDroidId('')
+                  }
+                }}
+                required
+              >
+                <option value="">请选择项目</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>Droid</label>
               <select className="input" value={droidId} onChange={e => setDroidId(e.target.value)} required>
-                {droids.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                {projectDroids.length === 0 && <option value="">该项目无可用 Droid</option>}
+                {projectDroids.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
           </div>

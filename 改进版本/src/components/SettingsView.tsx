@@ -4,7 +4,7 @@ import { Save, RotateCcw, Sliders } from 'lucide-react'
 import type { SchedulerConfig, AutoLevel } from '../types'
 
 export function SettingsView() {
-  const { config, setConfig } = useStore()
+  const { config, setConfig, models } = useStore()
   const initialConfig = useMemo(() => config ? { ...config } : null, [config])
   const [localConfig, setLocalConfig] = useState<SchedulerConfig | null>(initialConfig)
   const [saved, setSaved] = useState(false)
@@ -100,14 +100,22 @@ export function SettingsView() {
                 <option value="full">Full - 完全权限</option>
               </select>
             </SettingsField>
-            <SettingsField label="默认模型">
-              <input
-                type="text"
+            <SettingsField label="默认模型" hint={`已加载 ${models.length} 个模型`}>
+              <select
                 className="input"
                 value={localConfig.defaultModel}
                 onChange={e => setLocalConfig({ ...localConfig, defaultModel: e.target.value })}
-                placeholder="claude-sonnet-4-20250514"
-              />
+                style={{ width: '100%' }}
+              >
+                {models.length === 0 && !modelsLoading && (
+                  <option value="">未找到可用模型</option>
+                )}
+                {models.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.displayName} ({m.provider})
+                  </option>
+                ))}
+              </select>
             </SettingsField>
           </SettingsSection>
 

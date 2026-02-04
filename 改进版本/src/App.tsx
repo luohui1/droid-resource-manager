@@ -16,6 +16,7 @@ export default function App() {
     setDroidStates, 
     setConfig, 
     setStatus,
+    setModels,
     updateTask,
     updateDroidState
   } = useStore()
@@ -24,12 +25,13 @@ export default function App() {
     const loadData = async () => {
       if (!window.api) return
 
-      const [projects, tasks, droidStates, config, status] = await Promise.all([
+      const [projects, tasks, droidStates, config, status, factorySettings] = await Promise.all([
         window.api.projects.list(),
         window.api.tasks.list(),
         window.api.droids.list(),
         window.api.scheduler.config(),
-        window.api.scheduler.status()
+        window.api.scheduler.status(),
+        window.api.system.getFactorySettings()
       ])
 
       setProjects(projects)
@@ -37,13 +39,32 @@ export default function App() {
       setDroidStates(droidStates)
       setConfig(config)
       setStatus(status)
+      
+      // 加载模型列表
+      const models = (factorySettings?.customModels || []).map((m: { id: string; displayName: string; model: string; provider: string }) => ({
+        id: m.id,
+        displayName: m.displayName,
+        model: m.model,
+        provider: m.provider
+      }))
+      const defaultModel = factorySettings?.sessionDefaultSettings?.model || ''
+      setModels(models, defaultModel)
     }
 
     loadData()
 
+    window.api?.on('scheduler:event:task-created', (task: Task) => {
+      const state = useStore.getState()
+      state.setTasks({ pending: [...state.tasks.pending, task], history: state.tasks.history })
+    })
+
     window.api?.on('scheduler:event:task-status', (data: unknown) => {
       const { taskId, status } = data as { taskId: string; status: string }
-      updateTask(taskId, { status: status as Task['status'] })
+      if (['completed', 'failed', 'cancelled'].includes(status)) {
+        window.api.tasks.list().then(setTasks)
+      } else {
+        updateTask(taskId, { status: status as Task['status'] })
+      }
     })
 
     window.api?.on('scheduler:event:task-output', (data: unknown) => {
@@ -59,11 +80,12 @@ export default function App() {
     })
 
     return () => {
+      window.api?.off('scheduler:event:task-created')
       window.api?.off('scheduler:event:task-status')
       window.api?.off('scheduler:event:task-output')
       window.api?.off('scheduler:event:droid-status')
     }
-  }, [setProjects, setTasks, setDroidStates, setConfig, setStatus, updateTask, updateDroidState])
+  }, [setProjects, setTasks, setDroidStates, setConfig, setStatus, setModels, updateTask, updateDroidState])
 
   const renderView = () => {
     switch (currentView) {

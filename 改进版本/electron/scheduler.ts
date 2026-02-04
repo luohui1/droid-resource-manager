@@ -7,7 +7,7 @@ import { ProcessManager } from './process-manager'
 import { ProjectManager } from './project-manager'
 import type {
   Task, DroidState, SchedulerConfig, SchedulerStatus,
-  CreateTaskDto, StreamJsonEvent
+  CreateTaskDto, StreamJsonEvent, Droid
 } from './types'
 
 type EventEmitter = (event: string, data: unknown) => void
@@ -19,6 +19,7 @@ export class Scheduler {
   private emit: EventEmitter
   private paused = false
   private watchdogTimer?: NodeJS.Timeout
+  private fileSnapshots: Map<string, Map<string, number>> = new Map()
 
   constructor(
     projectManager: ProjectManager,
@@ -276,7 +277,22 @@ export class Scheduler {
     task.startedAt = Date.now()
     task.pid = undefined
 
-    const success = this.processManager.spawn(task, project.path, config.defaultModel)
+    // 查找 Droid 定义
+    let droid: Droid | undefined
+    if (task.droidId) {
+      const droids = this.storage.getDroids()
+      droid = droids.find(d => d.id === task.droidId)
+    }
+
+    // 记录文件快照（用于变更追踪）
+    this.fileSnapshots.set(task.id, this.captureFileSnapshot(project.path))
+
+    const success = this.processManager.spawn({
+      task,
+      projectPath: project.path,
+      model: config.defaultModel,
+      droid
+    })
 
     if (success) {
       task.pid = this.processManager.getPid(task.id)
@@ -319,6 +335,15 @@ export class Scheduler {
     const task = this.getTask(taskId)
     if (!task) return
     void _signal
+
+    const project = this.projectManager.getProject(task.projectId)
+    if (project) {
+      const before = this.fileSnapshots.get(task.id)
+      if (before) {
+        task.changedFiles = this.compareFileSnapshots(before, this.captureFileSnapshot(project.path))
+        this.fileSnapshots.delete(task.id)
+      }
+    }
 
     if (code === 0) {
       task.status = 'completed'
@@ -372,6 +397,70 @@ export class Scheduler {
     this.moveToHistory(task)
     this.updateDroidStatus(task.droidId, 'error')
     this.emit('scheduler:event:task-status', { taskId: task.id, status: 'failed', error })
+  }
+
+  private captureFileSnapshot(projectPath: string): Map<string, number> {
+    const snapshot = new Map<string, number>()
+    const ignore = new Set(['node_modules', '.git', 'dist', 'dist-electron', 'release', '.factory'])
+    const maxFiles = 2000
+    let count = 0
+
+    const walk = (dir: string) => {
+      if (count >= maxFiles) return
+      let entries: string[] = []
+      try {
+        entries = fs.readdirSync(dir)
+      } catch {
+        return
+      }
+
+      for (const entry of entries) {
+        if (ignore.has(entry) || count >= maxFiles) continue
+        const fullPath = path.join(dir, entry)
+        let stat: fs.Stats
+        try {
+          stat = fs.statSync(fullPath)
+        } catch {
+          continue
+        }
+        if (stat.isDirectory()) {
+          walk(fullPath)
+        } else {
+          const rel = path.relative(projectPath, fullPath)
+          snapshot.set(rel, stat.mtimeMs)
+          count += 1
+        }
+      }
+    }
+
+    walk(projectPath)
+    return snapshot
+  }
+
+  private compareFileSnapshots(before: Map<string, number>, after: Map<string, number>): {
+    added: string[]
+    modified: string[]
+    removed: string[]
+  } {
+    const added: string[] = []
+    const modified: string[] = []
+    const removed: string[] = []
+
+    for (const [file, mtime] of after.entries()) {
+      if (!before.has(file)) {
+        added.push(file)
+      } else if (before.get(file) !== mtime) {
+        modified.push(file)
+      }
+    }
+
+    for (const file of before.keys()) {
+      if (!after.has(file)) {
+        removed.push(file)
+      }
+    }
+
+    return { added, modified, removed }
   }
 
   private updateDroidQueue(droidId: string, taskId: string, action: 'add' | 'remove'): void {

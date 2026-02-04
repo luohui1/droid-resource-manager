@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Sparkles, Bot, Crown, Wand2 } from 'lucide-react'
+import { useStore } from '../store'
 import type { CreateDroidDto, DroidRole, AutoLevel, Droid } from '../types'
 
 interface DroidCreatorProps {
@@ -11,16 +12,23 @@ interface DroidCreatorProps {
 }
 
 export function DroidCreator({ projectId, projectName, existingDroids, onClose, onCreate }: DroidCreatorProps) {
+  const { models, defaultModel } = useStore()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [role, setRole] = useState<DroidRole>('sub')
   const [systemPrompt, setSystemPrompt] = useState('')
-  const [model, setModel] = useState('')
+  const [model, setModel] = useState(defaultModel)
   const [autoLevel, setAutoLevel] = useState<AutoLevel>('medium')
   const [selectedSubDroids, setSelectedSubDroids] = useState<string[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
 
   const subDroids = existingDroids.filter(d => d.role === 'sub')
+
+  useEffect(() => {
+    if (!model && defaultModel) {
+      setModel(defaultModel)
+    }
+  }, [defaultModel, model])
 
   const handleGenerateMainPrompt = async () => {
     if (role !== 'main') return
@@ -112,15 +120,22 @@ export function DroidCreator({ projectId, projectName, existingDroids, onClose, 
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
-                模型 (可选)
+                模型
               </label>
-              <input
-                type="text"
+              <select
                 className="input"
                 value={model}
                 onChange={e => setModel(e.target.value)}
-                placeholder="默认使用全局配置"
-              />
+              >
+                {models.length === 0 && (
+                  <option value="">加载中...</option>
+                )}
+                {models.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.displayName}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

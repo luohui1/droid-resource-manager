@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'path'
+import fs from 'fs'
+import os from 'os'
 import { Scheduler } from './scheduler'
 import { ProjectManager } from './project-manager'
 import { ProcessManager } from './process-manager'
@@ -94,6 +96,8 @@ ipcMain.handle('projects:select-folder', async () => {
   })
   return result.canceled ? null : result.filePaths[0]
 })
+ipcMain.handle('projects:tree', (_, projectPath: string) => buildFileTree(projectPath, projectPath, 4))
+ipcMain.handle('projects:read-file', (_, projectPath: string, relativePath: string) => readProjectFile(projectPath, relativePath))
 
 // Droid 管理（新增）
 ipcMain.handle('droids:project-list', (_, projectId: string, projectPath: string) => 
@@ -136,3 +140,82 @@ ipcMain.handle('scheduler:resume', () => scheduler.resume())
 
 // 系统
 ipcMain.handle('system:get-user-data-path', () => app.getPath('userData'))
+ipcMain.handle('system:get-factory-settings', async () => {
+  const settingsPath = path.join(os.homedir(), '.factory', 'settings.json')
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const content = fs.readFileSync(settingsPath, 'utf-8')
+      return JSON.parse(content)
+    }
+  } catch (e) {
+    console.error('Failed to read factory settings:', e)
+  }
+  return null
+})
+
+type FileNode = {
+  name: string
+  path: string
+  type: 'file' | 'dir'
+  children?: FileNode[]
+}
+
+const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', 'dist-electron', 'release', '.factory'])
+const MAX_TREE_FILES = 2000
+
+function buildFileTree(root: string, current: string, depth: number, counter = { value: 0 }): FileNode[] {
+  if (depth < 0) return []
+  let entries: string[] = []
+  try {
+    entries = fs.readdirSync(current)
+  } catch {
+    return []
+  }
+
+  const nodes: FileNode[] = []
+  for (const entry of entries) {
+    if (counter.value >= MAX_TREE_FILES) break
+    if (IGNORED_DIRS.has(entry)) continue
+
+    const fullPath = path.join(current, entry)
+    let stat: fs.Stats
+    try {
+      stat = fs.statSync(fullPath)
+    } catch {
+      continue
+    }
+    const relPath = path.relative(root, fullPath)
+
+    if (stat.isDirectory()) {
+      nodes.push({
+        name: entry,
+        path: relPath,
+        type: 'dir',
+        children: buildFileTree(root, fullPath, depth - 1, counter)
+      })
+    } else {
+      counter.value += 1
+      nodes.push({ name: entry, path: relPath, type: 'file' })
+    }
+  }
+
+  return nodes
+}
+
+function readProjectFile(projectPath: string, relativePath: string): { content?: string; error?: string } {
+  const resolved = path.resolve(projectPath, relativePath)
+  const normalizedRoot = path.resolve(projectPath)
+  if (!resolved.startsWith(normalizedRoot)) {
+    return { error: '非法路径访问' }
+  }
+
+  try {
+    const stat = fs.statSync(resolved)
+    if (!stat.isFile()) return { error: '不是文件' }
+    if (stat.size > 200_000) return { error: '文件过大' }
+    const content = fs.readFileSync(resolved, 'utf-8')
+    return { content }
+  } catch {
+    return { error: '读取失败' }
+  }
+}

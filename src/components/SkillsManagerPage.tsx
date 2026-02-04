@@ -20,6 +20,7 @@ import {
   File,
   Copy
 } from 'lucide-react'
+import { useFactoryStore } from '../stores/factoryStore'
 
 interface Skill {
   name: string
@@ -45,8 +46,16 @@ function cn(...classes: (string | boolean | undefined)[]) {
 }
 
 export function SkillsManagerPage() {
-  const [nodes, setNodes] = useState<ProjectNode[]>([])
-  const [loading, setLoading] = useState(true)
+  const {
+    skillNodes,
+    skillsLoaded,
+    setSkillsData
+  } = useFactoryStore()
+
+  const [nodes, setNodes] = useState<ProjectNode[]>(skillNodes)
+  const [loading, setLoading] = useState(!skillsLoaded)
+  const [scanning, setScanning] = useState(false)
+  const [hydrated, setHydrated] = useState(useFactoryStore.persist.hasHydrated())
   const [selectedNode, setSelectedNode] = useState<ProjectNode | null>(null)
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
   const [editMode, setEditMode] = useState(false)
@@ -58,10 +67,49 @@ export function SkillsManagerPage() {
   const [generatingAi, setGeneratingAi] = useState(false)
   const [draggingSkill, setDraggingSkill] = useState<Skill | null>(null)
 
-  const loadData = useCallback(async () => {
-    // 加载全局
-    const globalSkills = await window.electronAPI.skillsGetGlobal()
-    const gPath = await window.electronAPI.skillsGetGlobalPath()
+  // 等待 store hydration
+  useEffect(() => {
+    const unsubscribe = useFactoryStore.persist.onFinishHydration(() => {
+      setHydrated(true)
+      console.log('[Skills] store hydrated')
+    })
+    if (useFactoryStore.persist.hasHydrated()) {
+      setHydrated(true)
+    }
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
+
+  // 从 store 初始化
+  useEffect(() => {
+    if (skillsLoaded && skillNodes.length > 0) {
+      console.log('[Skills] load from store', { nodes: skillNodes.length })
+      setNodes(skillNodes)
+      setSelectedNode(skillNodes[0])
+      setLoading(false)
+    }
+  }, [skillsLoaded, skillNodes])
+
+  const scanData = useCallback(async (source: 'init' | 'manual') => {
+    setScanning(true)
+
+    const scanStart = performance.now()
+    console.log('[Skills] scan start', { source })
+
+    const timed = async <T,>(label: string, task: () => Promise<T>) => {
+      const start = performance.now()
+      const result = await task()
+      console.log(`[Skills] ${label} ${(performance.now() - start).toFixed(1)}ms`)
+      return result
+    }
+
+    // 并行加载基础数据
+    const [globalSkills, gPath, discoveredPaths] = await Promise.all([
+      timed('skillsGetGlobal', () => window.electronAPI.skillsGetGlobal()),
+      timed('skillsGetGlobalPath', () => window.electronAPI.skillsGetGlobalPath()),
+      timed('skillsDiscoverWork', () => window.electronAPI.skillsDiscoverWork())
+    ])
 
     const newNodes: ProjectNode[] = [{
       path: gPath,
@@ -71,38 +119,56 @@ export function SkillsManagerPage() {
       expanded: true
     }]
 
-    const discoveredPaths = await window.electronAPI.skillsDiscoverWork()
-
-    // 加载已保存的项目
     const saved = localStorage.getItem('skillsProjectTabs')
     const savedPaths = saved ? (JSON.parse(saved) as string[]) : []
     const mergedPaths = Array.from(new Set([...savedPaths, ...discoveredPaths]))
+    console.log('[Skills] projects', { count: mergedPaths.length })
 
-    for (const p of mergedPaths) {
-      const skills = await window.electronAPI.skillsGetProject(p)
-      newNodes.push({
-        path: p,
-        name: p.split(/[/\\]/).pop() || p,
-        type: 'project',
-        skills,
-        expanded: true
+    // 并行加载所有项目
+    const projectResults = await Promise.all(
+      mergedPaths.map(async (p) => {
+        const skills = await timed(`skillsGetProject:${p}`, () => window.electronAPI.skillsGetProject(p))
+        return {
+          path: p,
+          name: p.split(/[/\\]/).pop() || p,
+          type: 'project' as const,
+          skills,
+          expanded: true
+        }
       })
-    }
+    )
+
+    newNodes.push(...projectResults)
+
+    // 保存到 store
+    setSkillsData(newNodes)
 
     setNodes(newNodes)
     if (newNodes.length > 0 && !selectedNode) {
       setSelectedNode(newNodes[0])
     }
+    console.log('[Skills] scan done', { durationMs: (performance.now() - scanStart).toFixed(1) })
+    setScanning(false)
     setLoading(false)
-  }, [selectedNode])
+  }, [selectedNode, setSkillsData])
 
+  // 首次加载：如果 store 没数据才扫描
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (!hydrated) return
+    if (!skillsLoaded) {
+      setLoading(false)
+      return
+    }
+    setLoading(false)
+  }, [hydrated, skillsLoaded, scanData])
 
   const saveProjectPaths = (projectNodes: ProjectNode[]) => {
     const paths = projectNodes.filter(n => n.type === 'project').map(n => n.path)
     localStorage.setItem('skillsProjectTabs', JSON.stringify(paths))
+  }
+
+  const handleRefresh = async () => {
+    await scanData('manual')
   }
 
   const handleAddProject = async () => {
@@ -132,12 +198,6 @@ export function SkillsManagerPage() {
       setSelectedNode(updated[0] || null)
       setSelectedSkill(null)
     }
-  }
-
-  const handleRefresh = async () => {
-    setLoading(true)
-    await loadData()
-    setLoading(false)
   }
 
   const handleDropSkill = async (targetNode: ProjectNode) => {
@@ -172,27 +232,7 @@ export function SkillsManagerPage() {
     setSelectedSkill(skill)
     setEditContent(skill.content)
     setEditMode(false)
-    
-    // 如果没有 AI 解读，自动生成
-    if (!skill.aiSummary) {
-      setGeneratingAi(true)
-      try {
-        const result = await window.electronAPI.skillsGenerateAiSummary(skill.path, skill.content)
-        if (result.success && result.summary) {
-          // 更新本地状态
-          setSelectedSkill({ ...skill, aiSummary: result.summary })
-          // 更新 nodes 中的数据
-          setNodes(prev => prev.map(n => ({
-            ...n,
-            skills: n.skills.map(s => s.path === skill.path ? { ...s, aiSummary: result.summary } : s)
-          })))
-        }
-      } catch (e) {
-        console.error('生成 AI 解读失败:', e)
-      } finally {
-        setGeneratingAi(false)
-      }
-    }
+    // AI 解读改为手动触发，不再自动生成
   }
 
   // 手动刷新 AI 解读
@@ -315,6 +355,16 @@ export function SkillsManagerPage() {
         <div className="mb-4 p-3 glass-card border border-destructive/20 rounded-lg flex items-center gap-2 text-destructive text-sm">
           <span className="flex-1 whitespace-pre-wrap">{error}</span>
           <button onClick={() => setError(null)}><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {scanning && (
+        <div className="mb-4 px-3 py-2 glass-chip rounded-lg flex items-center gap-3">
+          <span className="w-2 h-2 rounded-full bg-primary/80 animate-pulse" />
+          <span className="text-sm text-muted-foreground">正在扫描资源，请稍候...</span>
+          <div className="flex-1 h-1.5 rounded-full bg-white/40 overflow-hidden">
+            <div className="scan-progress h-full w-1/2 bg-primary/70" />
+          </div>
         </div>
       )}
 

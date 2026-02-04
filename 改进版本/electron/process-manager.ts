@@ -1,10 +1,17 @@
 import { spawn, ChildProcess } from 'child_process'
-import type { Task, StreamJsonEvent } from './types'
+import type { Task, StreamJsonEvent, Droid } from './types'
 
 interface RunningProcess {
   process: ChildProcess
   taskId: string
   startTime: number
+}
+
+interface SpawnOptions {
+  task: Task
+  projectPath: string
+  model: string
+  droid?: Droid
 }
 
 type OutputCallback = (taskId: string, event: StreamJsonEvent) => void
@@ -20,7 +27,9 @@ export class ProcessManager {
     this.onExit = onExit
   }
 
-  spawn(task: Task, projectPath: string, model: string): boolean {
+  spawn(options: SpawnOptions): boolean {
+    const { task, projectPath, model, droid } = options
+
     if (this.processes.has(task.id)) {
       console.warn(`Task ${task.id} already running`)
       return false
@@ -34,6 +43,15 @@ export class ProcessManager {
       '--model', task.model || model
     ]
 
+    // 如果是导入的 Droid，使用 --droid 参数
+    if (droid?.source === 'imported' && droid.sourcePath) {
+      // 从 sourcePath 提取 droid 名称 (例如 .factory/droids/my-droid.md -> my-droid)
+      const droidName = droid.sourcePath.split(/[/\\]/).pop()?.replace('.md', '')
+      if (droidName) {
+        args.push('--droid', droidName)
+      }
+    }
+
     if (task.enabledTools?.length) {
       args.push('--enabled-tools', task.enabledTools.join(','))
     }
@@ -41,7 +59,15 @@ export class ProcessManager {
       args.push('--disabled-tools', task.disabledTools.join(','))
     }
 
-    args.push(task.prompt)
+    // 构建最终 prompt
+    let finalPrompt = task.prompt
+    
+    // 如果是创建的 Droid，将 systemPrompt 注入到任务 prompt 前面
+    if (droid?.source === 'created' && droid.systemPrompt) {
+      finalPrompt = `[System Context]\n${droid.systemPrompt}\n\n[Task]\n${task.prompt}`
+    }
+
+    args.push(finalPrompt)
 
     try {
       const proc = spawn('droid', args, {

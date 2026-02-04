@@ -3,9 +3,10 @@ import { Store, RefreshCw, Server, Sparkles, Bot, MessageSquare, ScrollText } fr
 
 interface HomePageProps {
   onOpenMarketplace: () => void
+  onInitResources: () => Promise<void>
 }
 
-export function HomePage({ onOpenMarketplace }: HomePageProps) {
+export function HomePage({ onOpenMarketplace, onInitResources }: HomePageProps) {
   const [counts, setCounts] = useState({
     mcp: 0,
     skill: 0,
@@ -13,6 +14,7 @@ export function HomePage({ onOpenMarketplace }: HomePageProps) {
     prompt: 0,
     rule: 0
   })
+  const [initializing, setInitializing] = useState(false)
 
   useEffect(() => {
     const loadCounts = async () => {
@@ -90,6 +92,16 @@ export function HomePage({ onOpenMarketplace }: HomePageProps) {
     })
   }
 
+  const handleInit = async () => {
+    setInitializing(true)
+    try {
+      await onInitResources()
+      await handleRefresh()
+    } finally {
+      setInitializing(false)
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* 统计卡片 */}
@@ -155,6 +167,14 @@ export function HomePage({ onOpenMarketplace }: HomePageProps) {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <h2 className="text-lg font-semibold font-display">资源概览</h2>
           <div className="flex gap-2">
+            <button 
+              onClick={handleInit}
+              disabled={initializing}
+              className="px-4 py-2 text-sm glass-chip hover:bg-white/70 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-60"
+            >
+              {initializing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {initializing ? '初始化中...' : '初始化资源'}
+            </button>
             <button 
               onClick={handleRefresh}
               className="px-4 py-2 text-sm glass-chip hover:bg-white/70 rounded-lg transition-colors flex items-center gap-2"

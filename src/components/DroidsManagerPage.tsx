@@ -12,6 +12,7 @@ import {
   X,
   Copy
 } from 'lucide-react'
+import { useFactoryStore } from '../stores/factoryStore'
 
 interface DroidConfig {
   linkedSkills?: {
@@ -74,21 +75,33 @@ function cn(...classes: (string | boolean | undefined)[]) {
 }
 
 export function DroidsManagerPage() {
-  const [nodes, setNodes] = useState<ProjectNode[]>([])
-  const [globalSkills, setGlobalSkills] = useState<string[]>([])
-  const [loading, setLoading] = useState(true)
+  const {
+    droidNodes,
+    globalSkillNames,
+    tools: storedTools,
+    toolCategories: storedCategories,
+    mcpServers: storedMcpServers,
+    droidsLoaded,
+    setDroidsData
+  } = useFactoryStore()
+
+  const [nodes, setNodes] = useState<ProjectNode[]>(droidNodes)
+  const [globalSkills, setGlobalSkills] = useState<string[]>(globalSkillNames)
+  const [loading, setLoading] = useState(!droidsLoaded)
+  const [scanning, setScanning] = useState(false)
   const [selectedNode, setSelectedNode] = useState<ProjectNode | null>(null)
   const [selectedDroid, setSelectedDroid] = useState<Droid | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showCopyModal, setShowCopyModal] = useState(false)
   const [copyingDroid, setCopyingDroid] = useState<Droid | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tools, setTools] = useState<string[]>([])
-  const [toolCategories, setToolCategories] = useState<ToolCategoryMap>({})
-  const [mcpServers, setMcpServers] = useState<string[]>([])
+  const [tools, setTools] = useState<string[]>(storedTools)
+  const [toolCategories, setToolCategories] = useState<ToolCategoryMap>(storedCategories)
+  const [mcpServers, setMcpServers] = useState<string[]>(storedMcpServers)
   const [permissionsOpen, setPermissionsOpen] = useState(true)
   const [linksOpen, setLinksOpen] = useState(true)
   const [draggingDroid, setDraggingDroid] = useState<Droid | null>(null)
+  const [hydrated, setHydrated] = useState(useFactoryStore.persist.hasHydrated())
 
   const [editData, setEditData] = useState({
     toolsCategory: 'read-only',
@@ -97,69 +110,139 @@ export function DroidsManagerPage() {
 
   const [configData, setConfigData] = useState<DroidConfig>({})
 
-  const loadData = useCallback(async () => {
+  // 等待 store hydration
+  useEffect(() => {
+    const unsubscribe = useFactoryStore.persist.onFinishHydration(() => {
+      setHydrated(true)
+      console.log('[Droids] store hydrated')
+    })
+    if (useFactoryStore.persist.hasHydrated()) {
+      setHydrated(true)
+    }
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
+
+  // 从 store 初始化
+  useEffect(() => {
+    if (droidsLoaded && droidNodes.length > 0) {
+      console.log('[Droids] load from store', { nodes: droidNodes.length })
+      setNodes(droidNodes)
+      setGlobalSkills(globalSkillNames)
+      setTools(storedTools)
+      setToolCategories(storedCategories)
+      setMcpServers(storedMcpServers)
+      setSelectedNode(droidNodes[0])
+      setLoading(false)
+    }
+  }, [droidsLoaded, droidNodes, globalSkillNames, storedTools, storedCategories, storedMcpServers])
+
+  const scanData = useCallback(async (source: 'init' | 'manual') => {
     if (!window.electronAPI?.droidsGetGlobal) {
       setError('Droids API 未加载，请重启应用以更新 preload')
-      setLoading(false)
       return
     }
-    const globalDroids = await window.electronAPI.droidsGetGlobal()
-    const gPath = await window.electronAPI.droidsGetGlobalPath()
-    const globalSkillsList = await window.electronAPI.skillsGetGlobal()
-    const toolsList = await window.electronAPI.droidsGetTools()
-    const categories = await window.electronAPI.droidsGetToolCategories()
-    const mcpList = await window.electronAPI.mcpList()
 
-    setGlobalSkills(globalSkillsList.map((s) => s.name))
-    setTools(toolsList)
-    setToolCategories(categories)
-    setMcpServers((mcpList.servers || []).map((s: { name: string }) => s.name))
+    setScanning(true)
+
+    const scanStart = performance.now()
+    console.log('[Droids] scan start', { source })
+
+    const timed = async <T,>(label: string, task: () => Promise<T>) => {
+      const start = performance.now()
+      const result = await task()
+      console.log(`[Droids] ${label} ${(performance.now() - start).toFixed(1)}ms`)
+      return result
+    }
+
+    // 并行加载基础数据
+    const [globalDroids, gPath, globalSkillsList, toolsList, categories, mcpList, discoveredPaths] = await Promise.all([
+      timed('droidsGetGlobal', () => window.electronAPI.droidsGetGlobal()),
+      timed('droidsGetGlobalPath', () => window.electronAPI.droidsGetGlobalPath()),
+      timed('skillsGetGlobal', () => window.electronAPI.skillsGetGlobal()),
+      timed('droidsGetTools', () => window.electronAPI.droidsGetTools()),
+      timed('droidsGetToolCategories', () => window.electronAPI.droidsGetToolCategories()),
+      timed('mcpList', () => window.electronAPI.mcpList()),
+      timed('droidsDiscoverWork', () => window.electronAPI.droidsDiscoverWork())
+    ])
+
+    const globalSkillNamesList = globalSkillsList.map((s) => s.name)
+    const mcpServerNames = (mcpList.servers || []).map((s: { name: string }) => s.name)
 
     const newNodes: ProjectNode[] = [{
       path: gPath,
       name: '全局 Droids',
       type: 'global',
       droids: globalDroids,
-      skills: globalSkillsList.map((s) => s.name),
+      skills: globalSkillNamesList,
       expanded: true
     }]
-
-    const discoveredPaths = await window.electronAPI.droidsDiscoverWork()
 
     const saved = localStorage.getItem('droidsProjectTabs')
     const savedPaths = saved ? (JSON.parse(saved) as string[]) : []
     const mergedPaths = Array.from(new Set([...savedPaths, ...discoveredPaths]))
+    console.log('[Droids] projects', { count: mergedPaths.length })
 
-    for (const p of mergedPaths) {
-      const droidsList = await window.electronAPI.droidsGetProject(p)
-      const skillsList = await window.electronAPI.skillsGetProject(p)
-      newNodes.push({
-        path: p,
-        name: p.split(/[/\\]/).pop() || p,
-        type: 'project',
-        droids: droidsList,
-        skills: skillsList.map((s) => s.name),
-        expanded: true
+    // 并行加载所有项目
+    const projectResults = await Promise.all(
+      mergedPaths.map(async (p) => {
+        const [droidsList, skillsList] = await Promise.all([
+          timed(`droidsGetProject:${p}`, () => window.electronAPI.droidsGetProject(p)),
+          timed(`skillsGetProject:${p}`, () => window.electronAPI.skillsGetProject(p))
+        ])
+        return {
+          path: p,
+          name: p.split(/[/\\]/).pop() || p,
+          type: 'project' as const,
+          droids: droidsList,
+          skills: skillsList.map((s) => s.name),
+          expanded: true
+        }
       })
-    }
+    )
+
+    newNodes.push(...projectResults)
+
+    // 保存到 store
+    setDroidsData({
+      nodes: newNodes,
+      globalSkills: globalSkillNamesList,
+      tools: toolsList,
+      toolCategories: categories,
+      mcpServers: mcpServerNames
+    })
 
     setNodes(newNodes)
+    setGlobalSkills(globalSkillNamesList)
+    setTools(toolsList)
+    setToolCategories(categories)
+    setMcpServers(mcpServerNames)
     if (newNodes.length > 0 && !selectedNode) {
       setSelectedNode(newNodes[0])
     }
+    console.log('[Droids] scan done', { durationMs: (performance.now() - scanStart).toFixed(1) })
+    setScanning(false)
     setLoading(false)
-  }, [selectedNode])
+  }, [selectedNode, setDroidsData])
 
+  // 首次加载：如果 store 没数据才扫描
   useEffect(() => {
-    const timer = setTimeout(() => {
-      void loadData()
-    }, 0)
-    return () => clearTimeout(timer)
-  }, [loadData])
+    if (!hydrated) return
+    if (!droidsLoaded) {
+      setLoading(false)
+      return
+    }
+    setLoading(false)
+  }, [hydrated, droidsLoaded, scanData])
 
   const saveProjectPaths = (projectNodes: ProjectNode[]) => {
     const paths = projectNodes.filter(n => n.type === 'project').map(n => n.path)
     localStorage.setItem('droidsProjectTabs', JSON.stringify(paths))
+  }
+
+  const handleRefresh = async () => {
+    await scanData('manual')
   }
 
   const handleAddProject = async () => {
@@ -191,12 +274,6 @@ export function DroidsManagerPage() {
       setSelectedNode(updated[0] || null)
       setSelectedDroid(null)
     }
-  }
-
-  const handleRefresh = async () => {
-    setLoading(true)
-    await loadData()
-    setLoading(false)
   }
 
   const handleDropDroid = async (targetNode: ProjectNode) => {
@@ -330,6 +407,16 @@ export function DroidsManagerPage() {
         <div className="mb-4 p-3 glass-card border border-destructive/20 rounded-lg flex items-center gap-2 text-destructive text-sm">
           <span className="flex-1 whitespace-pre-wrap">{error}</span>
           <button onClick={() => setError(null)}><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {scanning && (
+        <div className="mb-4 px-3 py-2 glass-chip rounded-lg flex items-center gap-3">
+          <span className="w-2 h-2 rounded-full bg-primary/80 animate-pulse" />
+          <span className="text-sm text-muted-foreground">正在扫描资源，请稍候...</span>
+          <div className="flex-1 h-1.5 rounded-full bg-white/40 overflow-hidden">
+            <div className="scan-progress h-full w-1/2 bg-primary/70" />
+          </div>
         </div>
       )}
 

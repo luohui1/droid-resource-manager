@@ -1,6 +1,13 @@
 import { create } from 'zustand'
 import type { Project, Task, DroidState, SchedulerConfig, SchedulerStatus, Droid } from '../types'
 
+export interface ModelInfo {
+  id: string
+  displayName: string
+  model: string
+  provider: string
+}
+
 interface AppState {
   // Data
   projects: Project[]
@@ -9,6 +16,10 @@ interface AppState {
   projectDroids: Droid[]     // 项目的 Droid 定义
   config: SchedulerConfig | null
   status: SchedulerStatus | null
+  
+  // Models from Factory settings
+  models: ModelInfo[]
+  defaultModel: string
   
   // UI State
   selectedProjectId: string | null
@@ -24,6 +35,7 @@ interface AppState {
   setProjectDroids: (droids: Droid[]) => void
   setConfig: (config: SchedulerConfig) => void
   setStatus: (status: SchedulerStatus) => void
+  setModels: (models: ModelInfo[], defaultModel: string) => void
   
   selectProject: (id: string | null) => void
   selectTask: (id: string | null) => void
@@ -50,6 +62,8 @@ export const useStore = create<AppState>((set) => ({
   projectDroids: [],
   config: null,
   status: null,
+  models: [],
+  defaultModel: '',
   
   // Initial UI state
   selectedProjectId: null,
@@ -65,6 +79,7 @@ export const useStore = create<AppState>((set) => ({
   setProjectDroids: (projectDroids) => set({ projectDroids }),
   setConfig: (config) => set({ config }),
   setStatus: (status) => set({ status }),
+  setModels: (models, defaultModel) => set({ models, defaultModel }),
   
   // Selection actions
   selectProject: (id) => set({ selectedProjectId: id }),

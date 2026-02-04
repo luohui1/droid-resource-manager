@@ -100,6 +100,11 @@ export interface Task {
     inputTokens: number
     outputTokens: number
   }
+  changedFiles?: {
+    added: string[]
+    modified: string[]
+    removed: string[]
+  }
 }
 
 export interface DroidState {

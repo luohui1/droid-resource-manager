@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from './store'
+import { useFactoryStore } from './stores/factoryStore'
 import { Sidebar, type PageType } from './components/Sidebar'
 import { HomePage } from './components/HomePage'
 import { McpManagerPage } from './components/McpManagerPage'
@@ -168,6 +169,7 @@ interface Rule {
 
 function App() {
   const { loadData, getData } = useStore()
+  const { droidsLoaded, skillsLoaded, setDroidsData, setSkillsData } = useFactoryStore()
   const [currentPage, setCurrentPage] = useState<PageType>('home')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
@@ -180,6 +182,97 @@ function App() {
     }
     load()
   }, [loadData])
+
+  const handleInitResources = async () => {
+    if (!window.electronAPI) return
+
+    const [globalDroids, gPath, globalSkillsList, toolsList, categories, mcpList, discoveredPaths] = await Promise.all([
+      window.electronAPI.droidsGetGlobal(),
+      window.electronAPI.droidsGetGlobalPath(),
+      window.electronAPI.skillsGetGlobal(),
+      window.electronAPI.droidsGetTools(),
+      window.electronAPI.droidsGetToolCategories(),
+      window.electronAPI.mcpList(),
+      window.electronAPI.droidsDiscoverWork()
+    ])
+
+    const globalSkillNames = globalSkillsList.map((s) => s.name)
+    const mcpServerNames = (mcpList.servers || []).map((s: { name: string }) => s.name)
+
+    const droidNodes = [{
+      path: gPath,
+      name: '全局 Droids',
+      type: 'global' as const,
+      droids: globalDroids,
+      skills: globalSkillNames,
+      expanded: true
+    }]
+
+    const savedDroids = localStorage.getItem('droidsProjectTabs')
+    const savedDroidPaths = savedDroids ? (JSON.parse(savedDroids) as string[]) : []
+    const mergedDroidPaths = Array.from(new Set([...savedDroidPaths, ...discoveredPaths]))
+
+    const projectResults = await Promise.all(
+      mergedDroidPaths.map(async (p) => {
+        const [droidsList, skillsList] = await Promise.all([
+          window.electronAPI.droidsGetProject(p),
+          window.electronAPI.skillsGetProject(p)
+        ])
+        return {
+          path: p,
+          name: p.split(/[/\\]/).pop() || p,
+          type: 'project' as const,
+          droids: droidsList,
+          skills: skillsList.map((s) => s.name),
+          expanded: true
+        }
+      })
+    )
+
+    droidNodes.push(...projectResults)
+
+    setDroidsData({
+      nodes: droidNodes,
+      globalSkills: globalSkillNames,
+      tools: toolsList,
+      toolCategories: categories,
+      mcpServers: mcpServerNames
+    })
+
+    const [globalSkills, gSkillsPath, discoveredSkillPaths] = await Promise.all([
+      window.electronAPI.skillsGetGlobal(),
+      window.electronAPI.skillsGetGlobalPath(),
+      window.electronAPI.skillsDiscoverWork()
+    ])
+
+    const skillNodes = [{
+      path: gSkillsPath,
+      name: '全局 Skills',
+      type: 'global' as const,
+      skills: globalSkills,
+      expanded: true
+    }]
+
+    const savedSkills = localStorage.getItem('skillsProjectTabs')
+    const savedSkillPaths = savedSkills ? (JSON.parse(savedSkills) as string[]) : []
+    const mergedSkillPaths = Array.from(new Set([...savedSkillPaths, ...discoveredSkillPaths]))
+
+    const skillProjectResults = await Promise.all(
+      mergedSkillPaths.map(async (p) => {
+        const skills = await window.electronAPI.skillsGetProject(p)
+        return {
+          path: p,
+          name: p.split(/[/\\]/).pop() || p,
+          type: 'project' as const,
+          skills,
+          expanded: true
+        }
+      })
+    )
+
+    skillNodes.push(...skillProjectResults)
+    setSkillsData(skillNodes)
+  }
 
   const resources = useStore((s) => s.resources)
   const tags = useStore((s) => s.tags)
@@ -216,7 +309,7 @@ function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return <HomePage onOpenMarketplace={handleOpenMarketplace} />
+        return <HomePage onOpenMarketplace={handleOpenMarketplace} onInitResources={handleInitResources} />
       case 'mcp':
         return <McpManagerPage />
       case 'skills':
