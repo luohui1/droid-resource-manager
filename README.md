@@ -1,73 +1,79 @@
-# React + TypeScript + Vite
+# Droid Resource Manager
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+桌面端资源管理工具，用于管理 **Droids / Skills / MCP** 以及项目工作流执行，基于 Electron + React + Vite 构建。
 
-Currently, two official plugins are available:
+## 中文说明
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 功能概览
+- **Droids 管理**：全局/项目级 Droid 列表、详情、复制与运行。
+- **Skills 管理**：全局/项目级 Skills 列表、详情查看，AI 解读改为手动触发。
+- **MCP 管理**：统一查看与管理 MCP 服务与工具。
+- **任务调度**：任务创建、执行、日志与状态追踪。
+- **缓存优化**：Droids/Skills 加载结果持久化缓存，支持手动刷新。
+- **手动初始化**：首页提供“初始化资源”按钮，按需扫描资源。
 
-## React Compiler
+### 环境要求
+- Node.js 18+（推荐 20）
+- npm 9+
+- Windows 10/11（当前 release 为 Windows 构建）
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 启动与开发
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 构建
+```bash
+npm run build
+```
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### 打包（生成 release 安装包）
+```bash
+npm run dist
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Git LFS 说明
+release 目录下的 exe 已使用 Git LFS 跟踪：
+```bash
+git lfs install
+git lfs pull
+```
+
+## English Guide
+
+### Overview
+- **Droids Manager**: global/project droids list, detail, copy, and run.
+- **Skills Manager**: global/project skills list, detail viewer; AI summary is manual only.
+- **MCP Manager**: manage MCP servers and tools in one place.
+- **Task Scheduler**: create tasks, monitor status, and view logs.
+- **Caching**: persisted cache for droids/skills with manual refresh.
+- **Manual Init**: Home page provides “Init Resources” to scan on demand.
+
+### Requirements
+- Node.js 18+ (20 recommended)
+- npm 9+
+- Windows 10/11 (current release targets Windows)
+
+### Development
+```bash
+npm install
+npm run dev
+```
+
+### Build
+```bash
+npm run build
+```
+
+### Distribution (installer)
+```bash
+npm run dist
+```
+
+### Git LFS
+Release executables are tracked with LFS:
+```bash
+git lfs install
+git lfs pull
 ```
